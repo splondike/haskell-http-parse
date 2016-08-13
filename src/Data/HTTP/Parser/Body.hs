@@ -13,6 +13,7 @@ module Data.HTTP.Parser.Body (
 
 import Control.Applicative((<|>))
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BSC
 import qualified Data.Attoparsec.ByteString.Char8 as AP
 import qualified Network.HTTP.Types as HTTP
 import qualified Data.CaseInsensitive as CI
@@ -31,8 +32,11 @@ urlEncodedFormParser = Q.parseQuery
 parseMultipart :: BS.ByteString -> BS.ByteString -> Either String T.MultipartForm
 parseMultipart separator = AP.parseOnly (multipartFormParser separator)
 
+-- TODO: Don't require this parser to consume all the input (endOfInput), it should
+-- just finish when it sees the finalLine
 multipartFormParser :: BS.ByteString -> AP.Parser T.MultipartForm
 multipartFormParser separator = T.MultipartForm separator <$> (withContent <|> noContent)
+                                                          <*  AP.endOfInput
    where
       withContent = (separatorLine *> AP.many' formChunk)
       noContent = finalLine *> pure []
@@ -45,7 +49,9 @@ multipartFormParser separator = T.MultipartForm separator <$> (withContent <|> n
       -- taking characters until we hit the start of a CRLF. Then check if we've hit
       -- a separator, and if so, consume that terminator and finish. If not, keep
       -- consuming input
-      bodyParser = BS.append <$> AP.takeWhile (/= '\r') <*> (endOfChunk <|> bodyParser)
+      -- bodyParser = BS.append <$> AP.takeWhile (/= '\r') <*> (endOfChunk <|> bodyParser)
+      bodyParser = BSC.pack <$> AP.manyTill AP.anyChar endOfChunk
+
       endOfChunk = newLine *> (separatorLine <|> finalLine) *> pure ""
 
       -- Each chunk is separated by one of these

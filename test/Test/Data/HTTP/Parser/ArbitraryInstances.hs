@@ -1,8 +1,9 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Test.Data.HTTP.Parser.ArbitraryInstances where
 
 import qualified Test.QuickCheck as QC
 
-import Data.List(intercalate, cycle)
+import Data.List(intercalate, subsequences)
 import qualified Data.CaseInsensitive as CI
 import qualified Data.ByteString.Char8 as BSC
 import qualified Network.HTTP.Types as HTTP
@@ -79,6 +80,13 @@ instance QC.Arbitrary T.MultipartForm where
                hasSep = (== BSC.pack "") . snd . BSC.breakSubstring fullSep
                fullSep = BSC.append (BSC.pack "--") sep
 
+   shrink form = map (T.MultipartForm sep) shrunkChunks
+      where
+         shrunkChunks = QC.shrinkList (map getChunk . QC.shrink . ArbMultipartFormChunk) $ chunks
+
+         sep = T.multipartFormSeparator form
+         chunks = T.multipartFormChunks form
+
 -- Wrap it so we don't take over the third party type
 newtype HTTPHeader = HTTPHeader { getHeader :: HTTP.Header }
 instance QC.Arbitrary HTTPHeader where
@@ -110,12 +118,22 @@ instance QC.Arbitrary ArbMultipartFormChunk where
       -- TODO: This name field is too broad, some characters (e.g. ") are percent encoded
       headers <- fmap (map getHeader) $ QC.arbitrary
       body <- fmap BSC.pack QC.arbitrary
-      name <- QC.arbitrary
-      -- TODO: This isn't random enough, spaces and case insensitivity
+      name <- QC.listOf . QC.elements $ ['\0'..'\9'] ++ "\11\12" ++ ['\14'..'\255']
+      -- TODO: This isn't random enough; need spaces and case insensitivity
       let cdBody = BSC.pack $ concat ["form-data; name=\"", name, "\""]
           contentDisposition = (CI.mk . BSC.pack $ "Content-Disposition", cdBody)
           fullHeaders = contentDisposition:headers
       return $ ArbMultipartFormChunk (fullHeaders, body)
+
+   shrink wrapper = map (\a -> ArbMultipartFormChunk (a, content)) $ headerSubsets
+      where
+         headerSubsets = filter hasOneContentDisposition $ filterEqual $ subsequences headers
+         filterEqual = filter (/= headers)
+         hasOneContentDisposition headerSet = cdCount == 1
+            where
+               cdCount = length $ filter isContentDisposition headerSet
+         isContentDisposition (name, _) = CI.mk "Content-Disposition" == name
+         (headers, content) = getChunk wrapper
 
 -- String sets from the spec: https://tools.ietf.org/html/rfc7230
 tchar = ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9'] ++ "!#$%&'*+-.^_`|~"

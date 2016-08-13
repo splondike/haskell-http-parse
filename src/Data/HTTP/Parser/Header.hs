@@ -80,11 +80,11 @@ parseHttpHeader = do
    _ <- AP.many' (AP.char ' ')
    let leadingSpaceLine = AP.many1 (AP.char ' ') *> 
                           (fmap BSC.pack $ AP.manyTill AP.anyChar newLine)
-   -- TODO: ltrim the concatenated value
-   -- HTTP/1.1 actually doesn't allow multi-line headers, but we're going to be
-   -- lenient
-   val <- (\x y -> BS.concat ((BSC.pack x):y)) <$> AP.manyTill AP.anyChar newLine
-                                              <*> AP.many' leadingSpaceLine
+       ltrim = BSC.dropWhile (== ' ')
+   -- HTTP/1.0 allows multiline headers, HTTP/1.1 doesn't. We'll accept multiline
+   -- for both
+   val <- (\x y -> ltrim $ BS.concat ((BSC.pack x):y)) <$> AP.manyTill AP.anyChar newLine
+                                                       <*> AP.many' leadingSpaceLine
    return (CI.mk key, val)
 
 renderRequestHeaders :: T.RequestHeaders -> BS.ByteString

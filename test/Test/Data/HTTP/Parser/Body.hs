@@ -14,6 +14,8 @@ import Test.Data.HTTP.Parser.ArbitraryInstances ()
 import qualified Data.HTTP.Parser.Body as P
 import qualified Data.HTTP.Parser.Types as T
 
+import Debug.Trace
+
 tests = testGroup "Body parsing tests" [parseMultiPartFormData,
                                         propRenderMulipartMatchesParse]
 
